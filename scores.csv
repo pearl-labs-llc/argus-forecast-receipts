@@ -1,3 +1,5 @@
 forecast_id,counted_under_rule_v1,cells,cells_with_gain,model,brier,log_loss,auc,top10_hits,climatology_brier
 mdo-front-2026-10-02,no,176,4,G,0.021439,0.085599,0.916,2,0.023933
 mdo-front-2026-10-02,no,176,4,M,0.017866,0.071774,0.964,2,0.023933
+mdo-front-2026-10-11,yes,176,6,G,0.023253,0.086995,0.954,4,0.033814
+mdo-front-2026-10-11,yes,176,6,M,0.023193,0.082769,0.963,4,0.033814

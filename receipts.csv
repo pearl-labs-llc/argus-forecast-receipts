@@ -1,3 +1,4 @@
 forecast_id,forecast_sha256,issued_for_map_date,resolves_on_map_date,counted_under_rule_v1,hash_published_utc,status
 mdo-front-2026-10-02,d4ddcd56f41b97191166ee5b949c346fa716df4d0fca8944e2b1a52c2790821b,2026-10-02,2026-10-09,no (issued before a separate confirmer existed),2026-10-12,resolved; research only; revealed
 mdo-front-2026-10-11,a745403844fe64a45b112a9e81856b27221f0ae205935fb4a99b7ccf3fa7ec2f,2026-10-11,2026-10-18,yes (confirmed by a separate confirmer before resolution),2026-10-12,pending; resolves on the 2026-10-18 map
+mdo-front-2026-10-18,c684daf1000431bc2e96b8756676906997d2bea2ba2d6f4e8f139e335e773a82,2026-10-18,2026-10-25,yes (confirmed by a separate confirmer before resolution),2026-10-18,pending; resolves on the 2026-10-25 map
