@@ -24,7 +24,7 @@ A public, append-only record of ARGUS's weekly forecasts of the Ukraine front li
 From 2026-10-25 a separate, pre-registered forecast of how much ground (km² per cell) is gained each week runs in `advance/`. It has its own rule (sha256 `2e78412f…e320`) and its own receipts. Its honest expectation is stated up front in `advance/README.md`.
 
 ## What this is not
-- **Not evidence of skill yet.** Today there are 0 counted weeks scored.
+- **Not evidence of skill yet.** 1 week counted; not evidence of skill (mdo-front-2026-10-11, scored on the 2026-10-18 map). The rule's test runs after 8 counted weeks.
   - The first row (2026-10-02) was issued before an independent confirmer existed, so it never counts.
   - Single weeks are not evidence.
 - **A research model.** It is not calibrated against any public benchmark and is not an operational product.
