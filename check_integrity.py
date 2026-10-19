@@ -31,6 +31,10 @@ SCORE_COLUMNS = {
 }
 TABLES = ("receipts.csv", "scores.csv", "advance/receipts.csv", "advance/scores.csv")
 HEX_SHA = re.compile(r"[0-9a-f]{64}\Z")
+# A forecast may gain later status lines (pending -> confirmed -> resolved/missed); the newest line wins, the first
+# line is the commitment and every commitment field stays identical. Mirrors the ARGUS app's receipts parser.
+STATUS_RANK = {"pending": 0, "confirmed": 1, "resolved": 2, "missed": 2}
+COMMITMENT_FIELDS = ("forecast_sha256", "issued_for_map_date", "resolves_on_map_date", "hash_published_utc")
 
 
 def require(condition, message):
@@ -59,6 +63,15 @@ def read_rows(root, filename, columns):
         require(all(value.strip() for key, value in row.items() if key != "auc"),
                 f"{filename}: empty required field")
     return rows
+
+
+def status_kind(status):
+    head = status.split(";")[0].strip().lower()
+    return head if head in STATUS_RANK else "other"
+
+
+def is_revealed(status):
+    return any(segment.strip().lower() == "revealed" for segment in status.split(";"))
 
 
 def counted(value):
@@ -119,9 +132,18 @@ def check_lane(root, prefix):
     count_column = "counted_under_advance_rule_v1" if prefix else "counted_under_rule_v1"
     receipts = read_rows(root, prefix + "receipts.csv", RECEIPT_COLUMNS.format(counted=count_column))
     by_id = {}
+    latest = {}
     for row in receipts:
         fid = row["forecast_id"]
-        require(fid not in by_id, f"{prefix}receipts.csv: duplicate forecast {fid}")
+        if fid in by_id:
+            first, previous = by_id[fid], latest[fid]
+            require(all(row[key] == first[key] for key in COMMITMENT_FIELDS + (count_column,)),
+                    f"{prefix}receipts.csv: duplicate forecast {fid} changes its commitment")
+            old_kind, new_kind = status_kind(previous["status"]), status_kind(row["status"])
+            require(old_kind != "other" and new_kind != "other" and STATUS_RANK[new_kind] > STATUS_RANK[old_kind],
+                    f"{prefix}receipts.csv: duplicate forecast {fid} without a status progression")
+            latest[fid] = row
+            continue
         require(HEX_SHA.fullmatch(row["forecast_sha256"]), f"{fid}: invalid sha256")
         issue, resolution = (date.fromisoformat(row[key]) for key in ("issued_for_map_date", "resolves_on_map_date"))
         require(resolution - issue == timedelta(days=7), f"{fid}: resolution must be seven days after issue")
@@ -132,6 +154,7 @@ def check_lane(root, prefix):
         if prefix and is_counted:
             require(issue >= date(2026, 10, 25), f"{fid}: advance counting begins 2026-10-25")
         by_id[fid] = row
+        latest[fid] = row
 
     reveals = {}
     reveal_dir = root / (prefix + "reveals")
@@ -165,12 +188,19 @@ def check_lane(root, prefix):
         require(forecast_hash(data) == row["forecast_sha256"], f"{fid}: reveal hash differs from commitment")
         reveals[fid] = data
 
+    for fid, row in latest.items():
+        if is_revealed(row["status"]):
+            require(fid in reveals, f"{fid}: status says revealed but no reveal is published")
+
     score_keys = set()
     scores = read_rows(root, prefix + "scores.csv", SCORE_COLUMNS[prefix])
     for row in scores:
         fid, model = row["forecast_id"], row["model"]
         require(fid in by_id, f"{prefix}scores.csv: score has no receipt {fid}")
         require(fid in reveals, f"{fid}: publish a verified reveal before scores")
+        if not prefix:
+            require(status_kind(latest[fid]["status"]) == "resolved",
+                    f"{fid}: scores for an unresolved forecast; append a resolved status line first")
         key = (fid, model)
         require(key not in score_keys, f"{fid}/{model}: duplicate score")
         score_keys.add(key)
