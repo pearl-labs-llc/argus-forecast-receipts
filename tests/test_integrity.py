@@ -88,6 +88,42 @@ class IntegrityTests(unittest.TestCase):
         self.append("receipts.csv", row)
         self.reject("duplicate forecast")
 
+    def test_status_progression_line_allowed(self):
+        self.append("receipts.csv", f"{self.FUTURE}," + "a" * 64 + ",2099-01-04,2099-01-11,yes,2099-01-04,pending")
+        self.append("receipts.csv", f"{self.FUTURE}," + "a" * 64 + ",2099-01-04,2099-01-11,yes,2099-01-04,resolved")
+        check_integrity(self.root, "HEAD")
+
+    def test_status_line_cannot_change_commitment(self):
+        self.append("receipts.csv", f"{self.FUTURE}," + "a" * 64 + ",2099-01-04,2099-01-11,yes,2099-01-04,pending")
+        self.append("receipts.csv", f"{self.FUTURE}," + "b" * 64 + ",2099-01-04,2099-01-11,yes,2099-01-04,resolved")
+        self.reject("changes its commitment")
+
+    def test_status_line_cannot_change_counted(self):
+        self.append("receipts.csv", f"{self.FUTURE}," + "a" * 64 + ",2099-01-04,2099-01-11,yes,2099-01-04,pending")
+        self.append("receipts.csv", f"{self.FUTURE}," + "a" * 64 + ",2099-01-04,2099-01-11,no,2099-01-04,resolved")
+        self.reject("changes its commitment")
+
+    def test_status_line_cannot_regress(self):
+        self.append("receipts.csv", f"{self.FUTURE}," + "a" * 64 + ",2099-01-04,2099-01-11,yes,2099-01-04,resolved")
+        self.append("receipts.csv", f"{self.FUTURE}," + "a" * 64 + ",2099-01-04,2099-01-11,yes,2099-01-04,pending")
+        self.reject("without a status progression")
+
+    def test_revealed_status_requires_reveal(self):
+        self.append("receipts.csv", f"{self.FUTURE}," + "a" * 64 + ",2099-01-04,2099-01-11,yes,2099-01-04,pending")
+        self.append("receipts.csv", f"{self.FUTURE}," + "a" * 64 + ",2099-01-04,2099-01-11,yes,2099-01-04,resolved; revealed")
+        self.reject("no reveal is published")
+
+    def test_scores_require_resolved_status(self):
+        payload = {"forecast_id": self.FUTURE, "issued_for_map_date": "2099-01-04", "resolves_on_map_date": "2099-01-11",
+                   "cells": {"c1": {"G": 0.1, "M": 0.2}}}
+        digest = forecast_hash(payload)
+        (self.root / f"reveals/{self.FUTURE}.json").write_text(json.dumps(payload))
+        self.append("receipts.csv", f"{self.FUTURE},{digest},2099-01-04,2099-01-11,yes,2099-01-04,pending")
+        self.append("scores.csv", f"{self.FUTURE},yes,1,0,G,0.01,0.02,,0,0.02")
+        self.reject("unresolved forecast")
+        self.append("receipts.csv", f"{self.FUTURE},{digest},2099-01-04,2099-01-11,yes,2099-01-04,resolved; revealed")
+        check_integrity(self.root, "HEAD")
+
     def test_duplicate_score_fails(self):
         row = (self.root / "scores.csv").read_text().splitlines()[1]
         self.append("scores.csv", row)

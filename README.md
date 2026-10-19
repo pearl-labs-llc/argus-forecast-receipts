@@ -12,7 +12,8 @@ A public, append-only record of ARGUS's weekly forecasts of the Ukraine front li
 2. **Confirm.** A confirmer other than the operator confirms, before the outcome map exists, that the forecast was committed in time. Today the operator and the confirmer are separate automated agents run by ARGUS. This is separation of duties, not third-party audit.
 3. **Reveal and score.** Seven days later, against the next DSM map:
    - the per-cell probabilities are revealed in `reveals/`, so anyone can recompute the hash with `verify.py`;
-   - the scores are added to `scores.csv`.
+   - a new `receipts.csv` line for the same forecast records its status as `resolved; revealed`. Every commitment field (hash, dates, counted flag, publication date) is copied unchanged from the first line, and the earlier line is never edited. The newest line is the current status;
+   - the scores are added to `scores.csv`. A score is accepted only once the forecast's newest status is `resolved`.
 4. **Nothing is edited or deleted.** Misses stay. Missed weeks are recorded as missed.
 
 ## The rule
