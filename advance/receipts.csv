@@ -1,1 +1,2 @@
 forecast_id,forecast_sha256,issued_for_map_date,resolves_on_map_date,counted_under_advance_rule_v1,hash_published_utc,status
+mdo-front-adv-2026-10-25,1b103f5d592b5acb6c00f9f3dc74afd1ee68bc6020efb14341e9bd49fb3df403,2026-10-25,2026-11-01,yes (confirmed by a separate confirmer before resolution),2026-10-25,pending; resolves on the 2026-11-01 map
