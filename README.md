@@ -24,6 +24,15 @@ A public, append-only record of ARGUS's weekly forecasts of the Ukraine front li
 ## Advance forecast (second record)
 From 2026-10-25 a separate, pre-registered forecast of how much ground (km² per cell) is gained each week runs in `advance/`. It has its own rule (sha256 `2e78412f…e320`) and its own receipts. Its honest expectation is stated up front in `advance/README.md`.
 
+## Reference baseline (`baselines.csv`)
+From the forecast issued on 2026-10-25, each resolved week can also get one row in `baselines.csv` for PERS, a "same as last week" reference baseline. Its method is fixed in `SCORING-RULE-v1-ADDENDUM-2.md` (sha256 `da72220e…53fa`), which is published here byte for byte and pinned by the integrity check. That file states that it takes effect when the owner approves its hash in writing.
+- **What PERS is.** A cell that recorded a gain in the 7 days before the issue map gets the historical rate of a gain in the week after a gain. Every other cell gets the historical rate of a gain in the week after no gain. Both rates come from the 52 weeks before the issue map, so PERS reads no map after it.
+- **A reference baseline, not a model.** PERS is not part of the sealed forecast and is not in the reveal. G alone is counted under rule v1, `scores.csv` stays G-only, and PERS never changes the rule v1 result.
+- **What each row holds.** The forecast id, the hash of the sealed PERS file (`persistence_sha256`), the cell and gain counts (equal to G's for the same week), and PERS's Brier score, log loss and AUC. The last column is PERS's top-10 hits averaged over random tie-breaking: PERS gives only two probability values per week, so many cells tie at tenth place and the count can be fractional.
+- **What is not published.** Per-cell PERS values. They amount to last week's gain map.
+- **Which weeks.** Only weeks issued on or after 2026-10-25. The weeks 2026-10-02, 2026-10-11 and 2026-10-18 never get a row, because the baseline was chosen after their outcomes were known.
+- **Comparison.** After 8 counted weeks, addendum 2 section 4 compares G's Brier score with PERS's. That result is reported beside the rule v1 result and never replaces it.
+
 ## What this is not
 - **Not evidence of skill yet.** 2 weeks counted; not evidence of skill (mdo-front-2026-10-11 and mdo-front-2026-10-18, scored on the 2026-10-18 and 2026-10-25 maps). The rule's test runs after 8 counted weeks.
   - The first row (2026-10-02) was issued before an independent confirmer existed, so it never counts.
@@ -43,7 +52,7 @@ forecasts. Fetch `origin/main` first if your checkout is behind.
 
 The integrity check preserves the exact published CSV prefix and reveal bytes,
 verifies reveal hashes against receipts, validates table schemas and numeric
-ranges, and pins the three approved scoring-rule artifacts, including the
+ranges, and pins the four published scoring-rule files, including the
 documented editing artifact in rule v1. Corrections belong in a new version or
 an erratum; do not rewrite an existing receipt, score, reveal or approved rule.
 This validates publication integrity, not the truth of outcomes or the

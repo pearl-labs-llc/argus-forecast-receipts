@@ -1,0 +1,1 @@
+forecast_id,counted_under_rule_v1,baseline,persistence_sha256,cells,cells_with_gain,brier,log_loss,auc,top10_expected_hits

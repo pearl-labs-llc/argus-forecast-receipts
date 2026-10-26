@@ -30,7 +30,7 @@ jobs:
           assert re.fullmatch(r"[0-9a-f]{40}", base), "invalid PR base commit"
           files = subprocess.check_output(["git", "diff", "--name-only", base, "HEAD"], text=True).splitlines()
           affected = any(
-              name in {"receipts.csv", "scores.csv", "verify.py", "check_integrity.py", ".github/workflows/receipt-integrity.yml"}
+              name in {"receipts.csv", "scores.csv", "baselines.csv", "verify.py", "check_integrity.py", ".github/workflows/receipt-integrity.yml"}
               or name.startswith(("reveals/", "advance/", "SCORING-RULE", "tests/"))
               for name in files
           )
