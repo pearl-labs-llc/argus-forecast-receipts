@@ -18,7 +18,8 @@ class IntegrityTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        for name in ("receipts.csv", "scores.csv", "SCORING-RULE-v1.md", "SCORING-RULE-v1-ADDENDUM-1.md"):
+        for name in ("receipts.csv", "scores.csv", "baselines.csv", "SCORING-RULE-v1.md", "SCORING-RULE-v1-ADDENDUM-1.md",
+                     "SCORING-RULE-v1-ADDENDUM-2.md"):
             shutil.copyfile(SOURCE / name, self.root / name)
         for name in ("reveals", "advance"):
             shutil.copytree(SOURCE / name, self.root / name)
@@ -247,6 +248,172 @@ class IntegrityTests(unittest.TestCase):
         nested.mkdir()
         (nested / "unchecked.json").write_text('{"inputs": "not a four-key forecast"}')
         self.reject("flat reveal directory")
+
+    # ---- baselines.csv (addendum 2 section 5) ----
+    PERS_SHA = "b" * 64
+
+    def resolved_week(self, fid=FUTURE, issued="2099-01-04", resolves="2099-01-11", counted="yes", status="resolved; revealed",
+                      g_row=True):
+        """A synthetic resolved week: receipt, published reveal (two cells), status line and the G score row."""
+        payload = {"forecast_id": fid, "issued_for_map_date": issued, "resolves_on_map_date": resolves,
+                   "cells": {"c1": {"G": 0.1, "M": 0.2}, "c2": {"G": 0.3, "M": 0.1}}}
+        digest = forecast_hash(payload)
+        (self.root / f"reveals/{fid}.json").write_text(json.dumps(payload))
+        self.append("receipts.csv", f"{fid},{digest},{issued},{resolves},{counted},{issued},pending")
+        if status:
+            self.append("receipts.csv", f"{fid},{digest},{issued},{resolves},{counted},{issued},{status}")
+        if g_row:
+            self.append("scores.csv", f"{fid},{counted},2,1,G,0.05,0.2,1.000,1,0.25")
+        return fid
+
+    def baseline_row(self, fid=FUTURE, **fields):
+        row = {"forecast_id": fid, "counted_under_rule_v1": "yes", "baseline": "PERS", "persistence_sha256": self.PERS_SHA,
+               "cells": "2", "cells_with_gain": "1", "brier": "0.120000", "log_loss": "0.400000", "auc": "0.750",
+               "top10_expected_hits": "1.000000"}
+        row.update(fields)
+        return ",".join(row.values())
+
+    def test_baselines_header_is_exact(self):
+        self.assertEqual((self.root / "baselines.csv").read_text(),
+                         "forecast_id,counted_under_rule_v1,baseline,persistence_sha256,cells,cells_with_gain,brier,log_loss,"
+                         "auc,top10_expected_hits\n")
+        self.replace("baselines.csv", b"top10_expected_hits", b"top10_hits")
+        self.reject("baselines.csv: unexpected CSV header")
+
+    def test_baselines_valid_row_allowed(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week()))
+        check_integrity(self.root, "HEAD")
+
+    def test_baselines_empty_auc_and_fractional_top10_allowed(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), auc="", top10_expected_hits="0.5"))
+        check_integrity(self.root, "HEAD")
+
+    def test_baselines_append_only(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week()))
+        self.git("add", ".")
+        self.git("-c", "user.name=Integrity tests", "-c", "user.email=tests@example.invalid",
+                 "-c", "commit.gpgsign=false", "commit", "-qm", "baseline row")
+        check_integrity(self.root, "HEAD")
+        self.replace("baselines.csv", b"0.120000", b"0.110000")
+        self.reject("baselines.csv: existing CSV bytes changed")
+
+    def test_baselines_unknown_baseline_fails(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), baseline="PERS_HARD"))
+        self.reject("unknown baseline PERS_HARD")
+
+    def test_baselines_invalid_persistence_sha_fails(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), persistence_sha256="B" * 64))
+        self.reject("invalid persistence_sha256")
+
+    def test_baselines_duplicate_row_fails(self):
+        row = self.baseline_row(self.resolved_week())
+        self.append("baselines.csv", row)
+        self.append("baselines.csv", row.replace("0.120000", "0.130000"))
+        self.reject("duplicate baseline")
+
+    def test_baselines_need_a_receipt(self):
+        self.append("baselines.csv", self.baseline_row())
+        self.reject("baseline has no receipt")
+
+    def test_baselines_need_a_published_reveal(self):
+        fid = self.resolved_week(status=None, g_row=False)
+        (self.root / f"reveals/{fid}.json").unlink()
+        self.append("baselines.csv", self.baseline_row(fid))
+        self.reject("verified reveal before baselines")
+
+    def test_baselines_need_a_resolved_status(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(status=None, g_row=False)))
+        self.reject("baselines for an unresolved forecast")
+
+    def test_baselines_need_the_published_g_row(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(g_row=False)))
+        self.reject("publish the G score row before baselines")
+
+    def test_baselines_cell_count_must_equal_reveal(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), cells="3"))
+        self.reject("baseline/reveal cell count differs")
+
+    def test_baselines_cells_with_gain_must_equal_g_row(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), cells_with_gain="2", top10_expected_hits="1"))
+        self.reject("baseline/G cells_with_gain differs")
+
+    def test_baselines_counted_must_match_receipt(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), counted_under_rule_v1="no"))
+        self.reject("inconsistent counted status in baselines")
+
+    def test_baselines_counted_must_be_yes_or_no(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), counted_under_rule_v1="reference"))
+        self.reject("start with yes or no")
+
+    def test_baselines_before_first_issue_fail(self):
+        # The published, resolved, scored 2026-10-18 week: its G row exists, but it predates addendum 2.
+        self.append("baselines.csv", self.baseline_row("mdo-front-2026-10-18", cells="177", cells_with_gain="5"))
+        self.reject("baselines begin with the 2026-10-25 issue")
+
+    def test_baselines_first_issue_week_allowed(self):
+        fid = self.resolved_week("mdo-front-2026-10-25-synthetic", "2026-10-25", "2026-11-01")
+        self.append("baselines.csv", self.baseline_row(fid))
+        check_integrity(self.root, "HEAD")
+
+    def test_baselines_brier_range(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), brier="1.2"))
+        self.reject("baseline brier: out-of-range")
+
+    def test_baselines_log_loss_range(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), log_loss="-0.1"))
+        self.reject("baseline log_loss: out-of-range")
+
+    def test_baselines_auc_range(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), auc="1.5"))
+        self.reject("baseline auc: out-of-range")
+
+    def test_baselines_top10_at_most_cells_with_gain(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), top10_expected_hits="1.5"))
+        self.reject("top10_expected_hits: out-of-range")
+
+    def test_baselines_top10_non_negative_and_finite(self):
+        for bad in ("-0.5", "nan"):
+            with self.subTest(bad):
+                path = self.root / "baselines.csv"
+                head = path.read_bytes()
+                fid = self.FUTURE if bad == "-0.5" else "mdo-front-2099-01-11"
+                self.resolved_week(fid, *(("2099-01-04", "2099-01-11") if bad == "-0.5" else ("2099-01-11", "2099-01-18")))
+                path.write_bytes(head)
+                self.append("baselines.csv", self.baseline_row(fid, top10_expected_hits=bad))
+                self.reject("top10_expected_hits: out-of-range")
+                path.write_bytes(head)
+
+    def test_baselines_numbers_must_be_finite(self):
+        self.append("baselines.csv", self.baseline_row(self.resolved_week(), brier="nan"))
+        self.reject("baseline brier: out-of-range or non-finite")
+
+    def test_baselines_no_per_cell_column(self):
+        # Section 5: per-cell PERS values are never published; an extra column is refused.
+        self.append("baselines.csv", self.baseline_row(self.resolved_week()) + ",c1=0.5")
+        self.reject("baselines.csv: wrong column count")
+
+    def test_pers_is_never_a_scores_row(self):
+        # scores.csv stays G-only for PERS: every scored model must be in the reveal, and PERS is not.
+        fid = self.resolved_week()
+        self.append("scores.csv", f"{fid},yes,2,1,PERS,0.12,0.4,0.750,1,0.25")
+        self.reject("score model absent from reveal")
+
+    def test_pers_in_a_reveal_breaks_its_hash(self):
+        fid = self.resolved_week()
+        path = self.root / f"reveals/{fid}.json"
+        data = json.loads(path.read_text())
+        data["cells"]["c1"]["PERS"] = 0.5
+        path.write_text(json.dumps(data))
+        self.reject("reveal hash differs")
+
+    def test_addendum_2_is_pinned(self):
+        with (self.root / "SCORING-RULE-v1-ADDENDUM-2.md").open("ab") as stream:
+            stream.write(b"\n")
+        self.reject("SCORING-RULE-v1-ADDENDUM-2.md: approved scoring rule hash changed")
+
+    def test_baselines_table_deleted_fails(self):
+        (self.root / "baselines.csv").unlink()
+        self.reject("baselines.csv: published record deleted or replaced")
 
     def test_invalid_base_fails_closed(self):
         with self.assertRaises(subprocess.CalledProcessError):

@@ -22,6 +22,7 @@ from verify import forecast_hash
 RULE_PINS = {
     "SCORING-RULE-v1.md": "49f3dffb2d502a04a6297bb5a1bfcf98cd29199d8f1f8790be6b7d775e119dbb",
     "SCORING-RULE-v1-ADDENDUM-1.md": "c5949b414c08934d709b28621f67b640ed7782a4e088a784eca9692cd1e0a943",
+    "SCORING-RULE-v1-ADDENDUM-2.md": "da72220ed16aa238e8649663ee4247178f612ab6398a02cbf2d52baec45553fa",
     "advance/SCORING-RULE-ADVANCE-v1.md": "2e78412f4176f1f7defcfc4b198b8c9e8d93559daf3886d89f42cc8d4404e320",
 }
 RECEIPT_COLUMNS = "forecast_id,forecast_sha256,issued_for_map_date,resolves_on_map_date,{counted},hash_published_utc,status"
@@ -29,7 +30,13 @@ SCORE_COLUMNS = {
     "": "forecast_id,counted_under_rule_v1,cells,cells_with_gain,model,brier,log_loss,auc,top10_hits,climatology_brier",
     "advance/": "forecast_id,counted_under_advance_rule_v1,cells,model,crps_km2,mae_log1p_median",
 }
-TABLES = ("receipts.csv", "scores.csv", "advance/receipts.csv", "advance/scores.csv")
+# Addendum 2 section 5: one PERS reference-baseline row per resolved week, beside (never in) scores.csv. Per-cell PERS
+# values are never published, so the table has no per-cell column and reveals are unchanged.
+BASELINE_COLUMNS = ("forecast_id,counted_under_rule_v1,baseline,persistence_sha256,cells,cells_with_gain,brier,log_loss,"
+                    "auc,top10_expected_hits")
+BASELINES = ("PERS",)
+BASELINES_FIRST_ISSUE = date(2026, 10, 25)  # addendum 2 FIRST_ISSUE: earlier weeks never get a baselines row
+TABLES = ("receipts.csv", "scores.csv", "advance/receipts.csv", "advance/scores.csv", "baselines.csv")
 HEX_SHA = re.compile(r"[0-9a-f]{64}\Z")
 # A forecast may gain later status lines (pending -> confirmed -> resolved/missed); the newest line wins, the first
 # line is the commitment and every commitment field stays identical. Mirrors the ARGUS app's receipts parser.
@@ -193,6 +200,7 @@ def check_lane(root, prefix):
             require(fid in reveals, f"{fid}: status says revealed but no reveal is published")
 
     score_keys = set()
+    g_scores = {}
     scores = read_rows(root, prefix + "scores.csv", SCORE_COLUMNS[prefix])
     for row in scores:
         fid, model = row["forecast_id"], row["model"]
@@ -220,6 +228,41 @@ def check_lane(root, prefix):
             if row["auc"]:
                 number(row["auc"], f"{fid}: auc", maximum=1)
             number(row["top10_hits"], f"{fid}: top10_hits", maximum=min(10, positives), integer=True)
+            if model == "G":
+                g_scores[fid] = row
+
+    if not prefix:
+        check_baselines(root, by_id, latest, reveals, g_scores)
+
+
+def check_baselines(root, by_id, latest, reveals, g_scores):
+    """baselines.csv (addendum 2 section 5): reference baselines scored beside G, never counted, never in scores.csv."""
+    keys = set()
+    for row in read_rows(root, "baselines.csv", BASELINE_COLUMNS):
+        fid, baseline = row["forecast_id"], row["baseline"]
+        require(fid in by_id, f"baselines.csv: baseline has no receipt {fid}")
+        require(fid in reveals, f"{fid}: publish a verified reveal before baselines")
+        require(status_kind(latest[fid]["status"]) == "resolved",
+                f"{fid}: baselines for an unresolved forecast; append a resolved status line first")
+        require(fid in g_scores, f"{fid}: publish the G score row before baselines")
+        require(baseline in BASELINES, f"{fid}: unknown baseline {baseline}")
+        require(HEX_SHA.fullmatch(row["persistence_sha256"]), f"{fid}: invalid persistence_sha256")
+        key = (fid, baseline)
+        require(key not in keys, f"{fid}/{baseline}: duplicate baseline")
+        keys.add(key)
+        require(date.fromisoformat(by_id[fid]["issued_for_map_date"]) >= BASELINES_FIRST_ISSUE,
+                f"{fid}: baselines begin with the 2026-10-25 issue (addendum 2)")
+        require(counted(row["counted_under_rule_v1"]) == counted(by_id[fid]["counted_under_rule_v1"]),
+                f"{fid}: inconsistent counted status in baselines")
+        cells = number(row["cells"], f"{fid}: baseline cells", minimum=1, integer=True)
+        require(cells == len(reveals[fid]["cells"]), f"{fid}: baseline/reveal cell count differs")
+        positives = number(row["cells_with_gain"], f"{fid}: baseline gains", maximum=cells, integer=True)
+        require(positives == int(g_scores[fid]["cells_with_gain"]), f"{fid}: baseline/G cells_with_gain differs")
+        number(row["brier"], f"{fid}: baseline brier", maximum=1)
+        number(row["log_loss"], f"{fid}: baseline log_loss")
+        if row["auc"]:
+            number(row["auc"], f"{fid}: baseline auc", maximum=1)
+        number(row["top10_expected_hits"], f"{fid}: top10_expected_hits", maximum=min(10, positives))
 
 
 def check_history(root, base):
