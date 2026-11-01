@@ -14,6 +14,7 @@ This is a second public, append-only record next to the weekly gain/no-gain fore
 - **Score.** Grid CRPS in km².
 - **Verdict.** It is given after 26 counted weeks. A skill claim needs AB to beat both climatology and persistence, with a week-blocked bootstrap 95% interval entirely above zero.
 - **Counting.** The first counted issue is 2026-10-25. Each week counts only if a confirmer other than the operator confirms it before the outcome map exists.
+- **Not evidence of skill yet.** Research model; 1 advance week counted; not evidence of skill (mdo-front-adv-2026-10-25, scored on the 2026-11-01 map). The rule's test runs after 26 counted weeks.
 
 ## Honest expectation, stated up front
 On past weeks, which are exposed history and not blind, AB beat climatology over the full 87-week backtest. Over the 40 weeks of 2026 it did **not** clearly beat climatology. In the current conditions the rule's chance of finding skill is close to zero. Across the full backtest it is about 76%.
