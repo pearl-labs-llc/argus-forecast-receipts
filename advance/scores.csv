@@ -1,1 +1,6 @@
 forecast_id,counted_under_advance_rule_v1,cells,model,crps_km2,mae_log1p_median
+mdo-front-adv-2026-10-25,yes,177,AB,0.115387,0.050475
+mdo-front-adv-2026-10-25,yes,177,A,0.120409,0.045471
+mdo-front-adv-2026-10-25,yes,177,CLIM,0.119176,0.051666
+mdo-front-adv-2026-10-25,yes,177,PERS,0.150633,0.056611
+mdo-front-adv-2026-10-25,yes,177,ZERO,0.156832,0.061891
